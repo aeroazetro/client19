@@ -8,6 +8,7 @@ const BUNDLE_SIZE = 10;
 const BUNDLE_PRICE = 4500;
 const BILLING_LOGS_FILE = 'billing-logs.csv';
 const BILLING_TABLE = 'billing_sessions';
+const BILLING_AUTO_SEED_ON_EMPTY = false;
 const PROOF_BUCKET = 'payment-proofs';
 const PROOF_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 const PROOF_RETENTION_MONTHS = 6;
@@ -199,9 +200,13 @@ async function loadBillingSessions() {
                 return;
             }
 
-            // First run on a fresh database: seed from billing-logs.csv if available.
-            const seedRows = await loadBillingSessionsFromFile();
-            billingSessions = await seedSupabaseBilling(seedRows);
+            if (BILLING_AUTO_SEED_ON_EMPTY) {
+                // Optional first-run seeding.
+                const seedRows = await loadBillingSessionsFromFile();
+                billingSessions = await seedSupabaseBilling(seedRows);
+            } else {
+                billingSessions = [];
+            }
             await cleanupExpiredProofs();
             saveBillingSessions();
             return;
@@ -415,13 +420,20 @@ function updateDiscountMeter() {
 
     const selectedCount = Number.parseInt(select.value || '1', 10);
     const previewRows = getEarliestUnpaidRows(selectedCount);
-    const breakdown = calculatePaymentBreakdownForRows(previewRows);
-    const progressPct = Math.max(0, Math.min(100, (breakdown.sessionCount / BUNDLE_SIZE) * 100));
+    const projectedRows = [...previewRows];
+    while (projectedRows.length < selectedCount) {
+        projectedRows.push({ hours: 1 });
+    }
+    const breakdown = calculatePaymentBreakdownForRows(projectedRows);
+    const progressPct = Math.max(0, Math.min(100, (selectedCount / BUNDLE_SIZE) * 100));
     fill.style.width = `${progressPct}%`;
 
-    if (breakdown.sessionCount < BUNDLE_SIZE) {
-        const remaining = BUNDLE_SIZE - breakdown.sessionCount;
-        meterText.textContent = `Pay now: ${formatPeso(breakdown.discountedTotal)}. +${remaining} to unlock ₱500 discount.`;
+    if (selectedCount < BUNDLE_SIZE) {
+        const remaining = BUNDLE_SIZE - selectedCount;
+        const availabilityNote = previewRows.length < selectedCount
+            ? ` Only ${previewRows.length} unpaid available now.`
+            : '';
+        meterText.textContent = `Pay now: ${formatPeso(breakdown.discountedTotal)}. +${remaining} to unlock ₱500 discount.${availabilityNote}`;
         if (bundleChip) {
             bundleChip.classList.add('hidden');
             bundleChip.textContent = '';

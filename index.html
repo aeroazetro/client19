@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math 8 Reviewer | PSHS Prep</title>
+    <link rel="stylesheet" href="styles.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap"
+        rel="stylesheet">
+
+    <!-- KaTeX for LaTeX Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+</head>
+
+<body>
+
+    <!-- Global Header -->
+    <header class="site-header">
+        <div class="container">
+            <a href="#" class="site-logo" onclick="navTo('landing'); return false;">
+                PSHS MATH
+            </a>
+            <nav class="site-nav">
+                <a onclick="scrollToSection('subject-list')">Modules</a>
+                <a onclick="openQuickRef()">Quick Reference</a>
+                <a onclick="openBilling()">Billing</a>
+                <a href="https://aeroazetro.github.io/portfolio/" target="_blank">Tutor</a>
+                <a href="https://www.figma.com/board/5ARdN53DoMWxWeNRk2jPqd/ian?node-id=0-1&t=1V2WYpVSJ9FpJnUj-1"
+                    target="_blank">Whiteboard</a>
+                <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Dark Mode">
+                    <span id="theme-icon">🌙</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <!-- LANDING PAGE -->
+        <section id="landing" class="view-section">
+
+            <!-- Hero with Wave -->
+            <div class="hero">
+                <div class="hero-content">
+                    <h1>Intermediate Algebra</h1>
+                    <p>Rigorous preparation for the PSHS curriculum. Master linear systems, functions, and analytic
+                        geometry.</p>
+                    <div class="hero-buttons">
+                        <button class="btn btn-primary" onclick="scrollToSection('subject-list')">Start
+                            Learning</button>
+                        <button class="btn btn-secondary" onclick="openQuickRef()">Quick Reference</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Filler Section with Gray Background for Contrast -->
+            <div style="background: var(--bg-secondary); padding: 4rem 0;">
+                <div class="container">
+
+                    <!-- "Why This Reviewer" Filler Section -->
+                    <section class="section-title">
+                        <h2>Why This Learning Portal?</h2>
+                        <p style="color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Designed to replicate
+                            the
+                            rigor and pressure of the actual examination.</p>
+                    </section>
+
+                    <div class="card-grid">
+                        <div class="card" style="padding: 2rem;">
+                            <div class="card-icon">🧠</div>
+                            <h3>Concept Mastery</h3>
+                            <p>Go beyond rote memorization with deep dives into the 'why' and 'how' of algebra.</p>
+                        </div>
+                        <div class="card" style="padding: 2rem;">
+                            <div class="card-icon">⚡</div>
+                            <h3>Instant Feedback</h3>
+                            <p>Get detailed explanations immediately after every question to close knowledge gaps fast.
+                            </p>
+                        </div>
+                        <div class="card" style="padding: 2rem;">
+                            <div class="card-icon">📈</div>
+                            <h3>Rigorous Standard</h3>
+                            <p>Aligned with the high expectations of the Philippine Science High School system.</p>
+                        </div>
+                    </div>
+
+                    <!-- Subject Hub -->
+                    <section id="subject-list" style="padding-top: 2rem;">
+                        <div class="section-title">
+                            <h2>Review Modules</h2>
+                        </div>
+
+                        <div class="card-grid">
+                            <div class="card" onclick="selectSubject('polynomials')">
+                                <div class="card-icon">✖️</div>
+                                <h3>Polynomial Functions</h3>
+                                <p>Identify, evaluate, finding degree, operations, and basic factoring.</p>
+                                <span class="badge">3 Modules Available</span>
+                            </div>
+
+                            <div class="card" onclick="selectSubject('linear_functions')">
+                                <div class="card-icon">📉</div>
+                                <h3>Linear Functions</h3>
+                                <p>Domain, Range, Function Notation, and Real-world Applications.</p>
+                                <span class="badge">Coming Soon</span>
+                            </div>
+
+                            <div class="card" onclick="selectSubject('line_equation')">
+                                <div class="card-icon">✍️</div>
+                                <h3>Equation of a Line and Graphing</h3>
+                                <p>Slope-intercept form, point-slope form, and graphing techniques.</p>
+                                <span class="badge">Coming Soon</span>
+                            </div>
+
+                            <div class="card" onclick="selectSubject('geometry')">
+                                <div class="card-icon">📐</div>
+                                <h3>Parallel & Perpendicular Lines</h3>
+                                <p>Slopes, Intercepts, Linear Equations, and Cartesian Plane Geometry.</p>
+                                <span class="badge">9 Modules Available</span>
+                            </div>
+
+                            <div class="card" onclick="selectSubject('circles')">
+                                <div class="card-icon">⭕</div>
+                                <h3>Circles</h3>
+                                <p>Chords, tangents, secants, arcs, and central/inscribed angles.</p>
+                                <span class="badge">4 Modules Available</span>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+        </section>
+
+        <!-- TEST SELECTION HUB -->
+        <section id="test-selection" class="view-section hidden container">
+            <div style="margin-top: 2rem;">
+                <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;"
+                    onclick="navTo('landing')">← Back to Modules</button>
+            </div>
+
+            <div class="section-title" style="margin-top: 1rem;">
+                <h1 id="subject-title">Subject Title</h1>
+                <p style="color: var(--text-secondary);">Select a difficulty module to begin your assessment.</p>
+            </div>
+
+            <div id="test-grid" class="card-grid">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- QUIZ INTERFACE -->
+        <section id="quiz" class="view-section hidden container">
+            <div class="quiz-container">
+                <div class="question-header">
+                    <span id="quiz-subject-label">Subject</span>
+                    <span id="question-tracker">Question 1 / 20</span>
+                </div>
+
+                <div id="reading-passage" class="reading-passage hidden"></div>
+                <div class="question-box">
+                    <div id="question-text" class="question-text">Loading...</div>
+                    <div id="options-container"></div>
+                    <div class="quiz-footer"
+                        style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1rem; text-align: right;">
+                        <button id="skip-btn" class="btn btn-secondary" style="font-size: 0.9rem;"
+                            onclick="handleSkipClick()">Skip Question →</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RESULTS DASHBOARD -->
+        <section id="results" class="view-section hidden container">
+            <div class="quiz-container">
+                <div class="results-card">
+                    <h2 style="color: var(--text-secondary); text-transform: uppercase;">Examination Complete</h2>
+                    <div id="score-display" class="score-display">0/0</div>
+                    <h3 id="rating-text" style="font-size: 1.5rem; color: var(--text-primary); margin-bottom: 2rem;">
+                        Analyzing...</h3>
+                    <button class="btn btn-primary" onclick="navTo('landing')">Return to Dashboard</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- BILLING DASHBOARD -->
+        <section id="billing" class="view-section hidden container">
+            <div style="margin-top: 2rem;">
+                <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;"
+                    onclick="navTo('landing')">← Back to Home</button>
+            </div>
+
+            <div class="section-title" style="margin-top: 1rem;">
+                <h1>Billing Dashboard</h1>
+                <p style="color: var(--text-secondary);">Track unpaid amounts and full payment logs.</p>
+            </div>
+
+            <div class="billing-summary-grid">
+                <div class="billing-summary-card">
+                    <div class="summary-label">Unpaid Sessions</div>
+                    <div id="billing-unpaid-count" class="summary-value">0</div>
+                </div>
+                <div class="billing-summary-card">
+                    <div class="summary-label">All Logged Sessions</div>
+                    <div id="billing-total-logs" class="summary-value">0</div>
+                </div>
+            </div>
+
+            <div id="billing-client-controls" class="billing-payment-controls">
+                <div class="billing-payment-row">
+                    <button class="btn btn-primary billing-pay-btn" onclick="openBillingPayModal()">Pay & Upload Proof</button>
+                    <span class="billing-proof-note">JPG/PNG only, max 2MB. Proofs auto-delete after 6 months.</span>
+                </div>
+                <div id="billing-payment-status" class="billing-payment-status hidden"></div>
+            </div>
+
+            <div id="billing-admin-controls" class="billing-payment-controls">
+                <div class="billing-payment-row">
+                    <label>Tutor tools:</label>
+                    <button class="btn btn-primary billing-pay-btn" onclick="applyBulkPayment()">Apply Payment</button>
+                    <button class="btn btn-secondary" onclick="openBillingAddSessionModal()">+ Add Session</button>
+                </div>
+            </div>
+            <div id="billing-client-note" class="billing-client-note hidden">Client role: submit proof only. Tutor approves pending proofs.</div>
+
+            <div class="card-grid billing-grid">
+                <div class="card billing-card static-card">
+                    <h3>Payment Needed</h3>
+                    <p style="margin-bottom: 1rem;">Current unpaid sessions.</p>
+                    <div id="billing-unpaid-list" class="billing-list"></div>
+                </div>
+
+                <div class="card billing-card static-card">
+                    <h3>Session Logs</h3>
+                    <p style="margin-bottom: 1rem;">Complete payment history (paid + unpaid).</p>
+                    <div id="billing-log-list" class="billing-list"></div>
+                </div>
+            </div>
+
+            <div id="billing-pending-card" class="card static-card billing-methods-card">
+                <h3>Pending Proofs</h3>
+                <p style="margin-bottom: 1rem;">Submitted payments waiting for tutor approval.</p>
+                <div id="billing-pending-list" class="billing-list"></div>
+            </div>
+
+            <div id="billing-history-card" class="card static-card billing-methods-card">
+                <div class="billing-history-head">
+                    <div>
+                        <h3>Payment History</h3>
+                        <p style="margin-bottom: 1rem;">Approved payments with proof and transaction details.</p>
+                    </div>
+                    <div class="billing-history-filter-wrap">
+                        <label class="billing-field-label" for="billing-history-filter">Filter</label>
+                        <select id="billing-history-filter" class="billing-pay-select">
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="billing-history-list" class="billing-list"></div>
+            </div>
+
+            <div class="card static-card billing-methods-card">
+                <h3>Payment Methods</h3>
+                <div class="payment-methods-grid">
+                    <div class="payment-method">
+                        <strong>GoTyme Bank</strong>
+                        <p>0148 5367 2011</p>
+                        <p>Israel John Penalosa</p>
+                    </div>
+                    <div class="payment-method">
+                        <strong>GCash</strong>
+                        <p>0966 253 5576</p>
+                        <p>Rachel Penalosa</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SKIP WARNING MODAL -->
+        <div id="skip-modal" class="modal-overlay hidden" style="z-index: 200;">
+            <div class="modal-content" style="max-width: 400px; height: auto; text-align: center; padding: 2rem;">
+                <h3 style="margin-bottom: 1rem; color: var(--warning);">⚠️ Skip Question?</h3>
+                <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                    Skipping awards <strong>0 points</strong> and you will <strong>NOT</strong> see the correct answer.
+                </p>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <button class="btn btn-secondary" onclick="closeSkipModal()">Cancel</button>
+                    <button class="btn btn-primary"
+                        style="background-color: var(--warning); border-color: var(--warning);"
+                        onclick="confirmSkip()">Skip Anyway</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BILLING PASSWORD MODAL -->
+        <div id="billing-password-modal" class="modal-overlay hidden" style="z-index: 250;">
+            <div class="modal-content billing-password-content">
+                <h3 style="margin-bottom: 0.75rem;">Billing Access</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Choose access level and enter password.
+                </p>
+                <div id="billing-role-switcher" class="billing-role-switcher">
+                    <button id="billing-role-client" type="button" class="billing-role-btn active"
+                        onclick="selectBillingRole('client')">Client</button>
+                    <button id="billing-role-tutor" type="button" class="billing-role-btn"
+                        onclick="selectBillingRole('tutor')">Tutor</button>
+                </div>
+                <input id="billing-password-input" type="password" class="billing-password-input"
+                    placeholder="Enter password" onkeydown="handleBillingPasswordKeydown(event)">
+                <div id="billing-password-error" class="billing-password-error hidden">Incorrect password. Try again.
+                </div>
+                <div class="billing-password-actions">
+                    <button class="btn btn-secondary billing-action-btn" onclick="closeBillingPasswordModal()">Cancel</button>
+                    <button class="btn btn-primary billing-action-btn" onclick="submitBillingPassword()">Unlock</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="billing-add-modal" class="modal-overlay hidden" style="z-index: 260;">
+            <div class="modal-content billing-password-content">
+                <h3 style="margin-bottom: 0.75rem;">Add Session</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Tutor-only: create a new billing session log.</p>
+                <div class="billing-add-grid">
+                    <label class="billing-field-label" for="billing-add-date">Date</label>
+                    <input id="billing-add-date" type="date" class="billing-password-input">
+                    <label class="billing-field-label" for="billing-add-time">Time</label>
+                    <input id="billing-add-time" type="time" class="billing-password-input">
+                    <label class="billing-field-label" for="billing-add-tutee">Tutee</label>
+                    <input id="billing-add-tutee" type="text" class="billing-password-input" placeholder="JC">
+                    <label class="billing-field-label" for="billing-add-topic">Topic (optional)</label>
+                    <input id="billing-add-topic" type="text" class="billing-password-input" placeholder="e.g., Circle theorems">
+                    <label class="billing-field-label" for="billing-add-hours">Hours</label>
+                    <input id="billing-add-hours" type="number" min="0.5" step="0.5" value="1" class="billing-password-input">
+                    <label class="billing-field-label" for="billing-add-status">Status</label>
+                    <select id="billing-add-status" class="billing-password-input">
+                        <option value="unpaid" selected>Unpaid</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                </div>
+                <div id="billing-add-error" class="billing-password-error hidden"></div>
+                <div class="billing-password-actions">
+                    <button class="btn btn-secondary billing-action-btn" onclick="closeBillingAddSessionModal()">Cancel</button>
+                    <button class="btn btn-primary billing-action-btn" onclick="submitBillingAddSession()">Save Session</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="billing-proof-modal" class="modal-overlay hidden" style="z-index: 270;">
+            <div class="modal-content billing-password-content">
+                <h3 style="margin-bottom: 0.5rem;">Payment Proof</h3>
+                <p id="billing-proof-meta" style="color: var(--text-secondary); margin-bottom: 0.75rem;"></p>
+                <img id="billing-proof-image" class="billing-proof-image" alt="Payment proof">
+                <div class="billing-password-actions">
+                    <button class="btn btn-secondary billing-action-btn" onclick="closeBillingProofModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="billing-pay-modal" class="modal-overlay hidden" style="z-index: 275;">
+            <div class="modal-content billing-password-content billing-pay-content">
+                <h3 style="margin-bottom: 0.5rem;">Submit Payment Proof</h3>
+                <div class="billing-form-grid">
+                    <div class="billing-field">
+                        <label class="billing-field-label" for="billing-pay-count">Sessions to pay</label>
+                        <select id="billing-pay-count" class="billing-pay-select"></select>
+                    </div>
+                    <div class="billing-field">
+                        <label class="billing-field-label" for="billing-payment-method">Payment method</label>
+                        <select id="billing-payment-method" class="billing-pay-select">
+                            <option value="gotyme">GoTyme</option>
+                            <option value="gcash">GCash</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="billing-method-details" class="billing-method-details"></div>
+                <div class="billing-proof-row">
+                    <label class="billing-field-label billing-proof-label" for="billing-proof-file">Upload proof</label>
+                    <input id="billing-proof-file" type="file" accept="image/jpeg,image/png" class="billing-proof-input">
+                </div>
+                <div id="billing-proof-file-state" class="billing-proof-file-state">No file selected.</div>
+                <div class="billing-pricing-note">₱500/session | 10 sessions = ₱4,500 (save ₱500)</div>
+                <div id="billing-bundle-chip" class="billing-bundle-chip hidden"></div>
+                <div class="billing-discount-meter">
+                    <div class="billing-discount-track">
+                        <div id="billing-discount-fill" class="billing-discount-fill"></div>
+                    </div>
+                    <div id="billing-discount-text" class="billing-discount-text"></div>
+                </div>
+                <div class="billing-password-actions">
+                    <button class="btn btn-secondary billing-action-btn" onclick="closeBillingPayModal()">Cancel</button>
+                    <button class="btn btn-primary billing-action-btn" onclick="submitPaymentProof()">Submit Payment Proof</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FEEDBACK OVERLAY -->
+    <div id="feedback-overlay" class="feedback-overlay">
+        <div class="feedback-content">
+            <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
+                <div id="feedback-status" style="font-weight:700; font-size:1.2rem;">Correct</div>
+                <button class="btn-next" onclick="nextQuestion()">Next Arrow &rarr;</button>
+            </div>
+            <div id="feedback-correct-answer"
+                style="display:none; font-weight:600; margin-bottom:0.5rem; color:var(--text-primary);"></div>
+            <div id="feedback-explanation"
+                style="background:var(--bg-secondary); padding:1rem; border-radius:8px; color:var(--text-secondary);">
+            </div>
+        </div>
+    </div>
+
+    <!-- QUICK REFERENCE MODAL -->
+    <div id="quick-ref-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 style="margin:0; font-size:1.5rem; color:var(--primary);">Quick Reference</h2>
+                <button class="modal-close" onclick="closeQuickRef()"
+                    style="font-size:2rem; line-height:0.5; position:static;">×</button>
+            </div>
+
+            <!-- TABS -->
+            <div class="ref-layout">
+                <!-- SIDEBAR -->
+                <div class="ref-sidebar">
+                    <div class="ref-nav-header">TOPICS</div>
+                    <button class="ref-nav-item active" onclick="switchQuickRefTab('ref-polynomials')">
+                        <span class="icon">📝</span> Polynomials
+                    </button>
+                    <button class="ref-nav-item" onclick="switchQuickRefTab('ref-linear')">
+                        <span class="icon">📈</span> Linear Functions
+                    </button>
+                    <button class="ref-nav-item" onclick="switchQuickRefTab('ref-equation')">
+                        <span class="icon">✍️</span> Eq. of Line & Graph
+                    </button>
+                    <button class="ref-nav-item" onclick="switchQuickRefTab('ref-geometry')">
+                        <span class="icon">📐</span> Parallel & Perp.
+                    </button>
+                </div>
+
+                <!-- MAIN CONTENT -->
+                <div class="ref-main">
+
+                    <!-- POLYNOMIALS -->
+                    <div id="ref-polynomials" class="ref-section active">
+                        <h3 class="ref-title">Polynomial Functions</h3>
+
+                        <div class="ref-block">
+                            <h4>Laws of Exponents</h4>
+                            <div class="math-row">
+                                <span class="label">Product Rule:</span> <span class="value math-font">$x^a \cdot x^b =
+                                    x^{a+b}$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Power Rule:</span> <span class="value math-font">$(x^a)^b =
+                                    x^{ab}$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Quotient Rule:</span> <span class="value math-font">$\frac{x^a}{x^b}
+                                    = x^{a-b}$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Zero Exponent:</span> <span class="value math-font">$x^0 = 1$</span>
+                            </div>
+                        </div>
+
+                        <div class="ref-block">
+                            <h4>Special Products</h4>
+                            <div class="math-box">
+                                $$(a+b)^2 = a^2 + 2ab + b^2$$
+                            </div>
+                            <div class="math-box">
+                                $$(a-b)(a+b) = a^2 - b^2$$
+                            </div>
+                            <div class="math-box">
+                                $$(a+b)^3 = a^3 + 3a^2b + 3ab^2 + b^3$$
+                            </div>
+                        </div>
+
+                        <div class="ref-block">
+                            <h4>Factoring Techniques</h4>
+                            <p><strong>1. Common Monomial Factor (CMF):</strong> Factor out GCF first.<br>
+                                $4x^2 + 8x \rightarrow 4x(x+2)$</p>
+                            <p><strong>2. Difference of Squares:</strong> $x^2 - 16 \rightarrow (x-4)(x+4)$</p>
+                        </div>
+                    </div>
+
+                    <!-- LINEAR -->
+                    <div id="ref-linear" class="ref-section" style="display:none;">
+                        <h3 class="ref-title">Linear Functions</h3>
+
+                        <div class="ref-block">
+                            <h4>Slope Behavior</h4>
+                            <div class="math-row">
+                                <span class="label">Positive ($m > 0$):</span> <span class="value">Rises to Right
+                                    ↗</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Negative ($m < 0$):</span> <span class="value">Falls to Right
+                                            ↘</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Zero ($m = 0$):</span> <span class="value">Horizontal ➡</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Undefined:</span> <span class="value">Vertical ⬆</span>
+                            </div>
+                        </div>
+
+                        <div class="ref-block">
+                            <h4>Intercepts</h4>
+                            <p class="highlight-text"><strong>$x$-intercept:</strong> Set $y=0$ and solve for $x$.
+                                (Where graph crosses x-axis)</p>
+                            <p class="highlight-text"><strong>$y$-intercept:</strong> Set $x=0$ and solve for $y$.
+                                (Where graph crosses y-axis)</p>
+                        </div>
+
+                        <div class="ref-block">
+                            <h4>Vertical Line Test</h4>
+                            <p>A graph is a function only if any vertical line touches it at most once.</p>
+                        </div>
+                    </div>
+
+                    <!-- EQUATION OF LINE -->
+                    <div id="ref-equation" class="ref-section" style="display:none;">
+                        <h3 class="ref-title">Equation of a Line and Graphing</h3>
+
+                        <div class="ref-block">
+                            <h4>Forms of Equation</h4>
+                            <div class="math-row">
+                                <span class="label">Slope-Intercept:</span>
+                                <span class="value math-font">$y = mx + b$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Point-Slope:</span>
+                                <span class="value math-font">$y - y_1 = m(x - x_1)$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Standard Form:</span>
+                                <span class="value math-font">$Ax + By = C$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Two-Point:</span>
+                                <span class="value math-font">$y-y_1 = \frac{y_2-y_1}{x_2-x_1}(x-x_1)$</span>
+                            </div>
+                        </div>
+
+                        <div class="ref-block">
+                            <h4>Slope Formula ($m$)</h4>
+                            <div class="math-box">
+                                $$m = \frac{y_2 - y_1}{x_2 - x_1} = \frac{\text{Rise}}{\text{Run}}$$
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GEOMETRY -->
+                    <div id="ref-geometry" class="ref-section" style="display:none;">
+                        <h3 class="ref-title">Parallel & Perpendicular Lines</h3>
+
+                        <div class="ref-block">
+                            <h4>Lines Relationship</h4>
+                            <div class="math-row">
+                                <span class="label">Parallel:</span>
+                                <span class="value math-font">$m_1 = m_2$</span>
+                            </div>
+                            <div class="math-row">
+                                <span class="label">Perpendicular:</span>
+                                <span class="value math-font">$m_1 \cdot m_2 = -1$</span>
+                            </div>
+                        </div>
+
+
+
+                        <div class="ref-block">
+                            <h4>Distance Formula</h4>
+                            <div class="math-box">
+                                $$d = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2}$$
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <script src="questions.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

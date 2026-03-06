@@ -364,7 +364,7 @@
                 <div class="billing-form-grid">
                     <div class="billing-field">
                         <label class="billing-field-label" for="billing-pay-count">Sessions to pay</label>
-                        <select id="billing-pay-count" class="billing-pay-select"></select>
+                        <select id="billing-pay-count" class="billing-pay-select" onchange="updateDiscountMeter()" oninput="updateDiscountMeter()"></select>
                     </div>
                     <div class="billing-field">
                         <label class="billing-field-label" for="billing-payment-method">Payment method</label>

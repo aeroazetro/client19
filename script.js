@@ -418,7 +418,7 @@ function updateDiscountMeter() {
     const bundleChip = document.getElementById('billing-bundle-chip');
     if (!select || !fill || !meterText) return;
 
-    const selectedCount = Number.parseInt(select.value || '1', 10);
+    const selectedCount = getSelectedPaymentCount();
     const previewRows = getEarliestUnpaidRows(selectedCount);
     const projectedRows = [...previewRows];
     while (projectedRows.length < selectedCount) {
@@ -450,7 +450,15 @@ function updateDiscountMeter() {
 
 function getSelectedPaymentCount() {
     const select = document.getElementById('billing-pay-count');
-    return Number.parseInt(select && select.value ? select.value : '1', 10);
+    if (!select) return 1;
+    const valueCount = Number.parseInt(select.value || '', 10);
+    if (Number.isFinite(valueCount) && valueCount >= 1 && valueCount <= 10) return valueCount;
+    const optionText = select.options && select.selectedIndex >= 0
+        ? (select.options[select.selectedIndex].textContent || '')
+        : '';
+    const textCount = Number.parseInt(optionText, 10);
+    if (Number.isFinite(textCount) && textCount >= 1 && textCount <= 10) return textCount;
+    return 1;
 }
 
 function getSelectedPaymentMethod() {
@@ -740,22 +748,18 @@ function renderBillingList(targetId, sessions, emptyText, sortOrder = 'desc') {
         return direction * ((a.order || 0) - (b.order || 0));
     });
     sorted.forEach(item => {
-        const amount = getSessionAmount(item);
         const topicText = item.topic || 'No topic';
         const entry = document.createElement('div');
         entry.className = `billing-item ${item.status}`;
         entry.innerHTML = `
             <div class="billing-item-head">
                 <span class="billing-item-date">${item.date} ${item.time}</span>
-                <strong class="billing-item-amount">${formatPeso(amount)}</strong>
-            </div>
-            <div class="billing-item-top">
-                <span class="billing-item-name">${item.tutee}</span>
                 <span class="billing-status ${item.status}">${item.status.toUpperCase()}</span>
             </div>
+            <div class="billing-item-name">${item.tutee}</div>
             <div class="billing-item-meta">
-                <span class="billing-meta-pill">Duration: ${formatHours(item.hours)}</span>
-                <span class="billing-meta-pill">Topic: ${topicText}</span>
+                <span class="billing-meta-pill billing-meta-duration">${formatHours(item.hours)}</span>
+                <span class="billing-topic-text">${topicText}</span>
             </div>
         `;
         list.appendChild(entry);

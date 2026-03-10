@@ -8,6 +8,7 @@ const BUNDLE_SIZE = 10;
 const BUNDLE_PRICE = 4500;
 const BILLING_LOGS_FILE = 'billing-logs.csv';
 const BILLING_TABLE = 'billing_sessions';
+const BILLING_PAYMENTS_TABLE = 'billing_payments';
 const BILLING_AUTO_SEED_ON_EMPTY = false;
 const PROOF_BUCKET = 'payment-proofs';
 const PROOF_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -15,14 +16,17 @@ const PROOF_RETENTION_MONTHS = 6;
 const BILLING_CLIENT_PASSWORD = 'climb123'; // Change client password here.
 const BILLING_TUTOR_PASSWORD = 'teach123'; // Change tutor password here.
 const BILLING_STORAGE_KEY = 'billingSessionsStateV1';
+const BILLING_PAYMENTS_STORAGE_KEY = 'billingPaymentsStateV1';
 const BILLING_STORAGE_VERSION_KEY = 'billingSessionsStateVersionV1';
-const BILLING_STORAGE_VERSION = '2026-03-06-history-topic-hours';
+const BILLING_PAYMENTS_STORAGE_VERSION_KEY = 'billingPaymentsStateVersionV1';
+const BILLING_STORAGE_VERSION = '2026-03-10-prepaid-credits-v2';
 const BILLING_ROLE_KEY = 'billingRole';
 let billingRole = sessionStorage.getItem(BILLING_ROLE_KEY) || '';
 let billingUnlocked = billingRole === 'client' || billingRole === 'tutor';
 let selectedBillingRole = 'client';
 let billingHistoryFilter = 'all';
 let billingSessions = [];
+let billingPayments = [];
 let supabaseClient = null;
 let billingPersistenceMode = 'local';
 const PAYMENT_METHOD_DETAILS = {
@@ -190,11 +194,16 @@ function initPaymentCountSelector() {
 }
 
 async function loadBillingSessions() {
+    billingSessions = [];
+    billingPayments = [];
+
     if (hasSupabaseBilling()) {
         try {
             const remoteRows = await loadBillingSessionsFromSupabase();
+            const remotePayments = await loadBillingPaymentsFromSupabase();
             if (remoteRows.length > 0) {
                 billingSessions = remoteRows;
+                billingPayments = remotePayments;
                 await cleanupExpiredProofs();
                 saveBillingSessions();
                 return;
@@ -207,6 +216,7 @@ async function loadBillingSessions() {
             } else {
                 billingSessions = [];
             }
+            billingPayments = remotePayments;
             await cleanupExpiredProofs();
             saveBillingSessions();
             return;
@@ -214,16 +224,26 @@ async function loadBillingSessions() {
             console.warn('Supabase billing load failed. Falling back to local storage.', error);
             billingPersistenceMode = 'local';
             supabaseClient = null;
+            billingPayments = [];
         }
     }
 
     try {
         const saved = localStorage.getItem(BILLING_STORAGE_KEY);
+        const savedPayments = localStorage.getItem(BILLING_PAYMENTS_STORAGE_KEY);
         const savedVersion = localStorage.getItem(BILLING_STORAGE_VERSION_KEY);
+        const savedPaymentsVersion = localStorage.getItem(BILLING_PAYMENTS_STORAGE_VERSION_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
             if (savedVersion === BILLING_STORAGE_VERSION && Array.isArray(parsed) && parsed.every(row => row && row.date && row.time && row.tutee)) {
                 billingSessions = parsed.map((row, idx) => normalizeBillingRow(row, idx));
+                billingPayments = [];
+                if (savedPayments && savedPaymentsVersion === BILLING_STORAGE_VERSION) {
+                    const parsedPayments = JSON.parse(savedPayments);
+                    if (Array.isArray(parsedPayments)) {
+                        billingPayments = parsedPayments.map((row, idx) => normalizePaymentRow(row, idx));
+                    }
+                }
                 return;
             }
         }
@@ -231,6 +251,7 @@ async function loadBillingSessions() {
         console.warn('Failed to load billing sessions from storage. Reverting to file seed.', error);
     }
     billingSessions = await loadBillingSessionsFromFile();
+    billingPayments = [];
     saveBillingSessions();
 }
 
@@ -262,6 +283,38 @@ async function loadBillingSessionsFromSupabase() {
         proof_path: row.proof_path,
         proof_uploaded_at: row.proof_uploaded_at,
         approved_at: row.approved_at
+    }, idx));
+}
+
+async function loadBillingPaymentsFromSupabase() {
+    if (!hasSupabaseBilling()) return [];
+    const { data, error } = await supabaseClient
+        .from(BILLING_PAYMENTS_TABLE)
+        .select('id,batch_id,sessions_purchased,sessions_assigned,sessions_remaining,status,payment_method,payment_amount,payment_account_name,payment_account_number,proof_path,proof_uploaded_at,approved_at,created_at')
+        .order('created_at', { ascending: true });
+    if (error) {
+        if (error.code === '42P01') {
+            console.warn('billing_payments table is missing. Run updated supabase-schema.sql.');
+            return [];
+        }
+        throw error;
+    }
+    if (!Array.isArray(data)) return [];
+    return data.map((row, idx) => normalizePaymentRow({
+        id: row.id,
+        batch_id: row.batch_id,
+        sessions_purchased: row.sessions_purchased,
+        sessions_assigned: row.sessions_assigned,
+        sessions_remaining: row.sessions_remaining,
+        status: row.status,
+        payment_method: row.payment_method,
+        payment_amount: row.payment_amount,
+        payment_account_name: row.payment_account_name,
+        payment_account_number: row.payment_account_number,
+        proof_path: row.proof_path,
+        proof_uploaded_at: row.proof_uploaded_at,
+        approved_at: row.approved_at,
+        created_at: row.created_at
     }, idx));
 }
 
@@ -318,7 +371,9 @@ async function loadBillingSessionsFromFile() {
 function saveBillingSessions() {
     try {
         localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(billingSessions));
+        localStorage.setItem(BILLING_PAYMENTS_STORAGE_KEY, JSON.stringify(billingPayments));
         localStorage.setItem(BILLING_STORAGE_VERSION_KEY, BILLING_STORAGE_VERSION);
+        localStorage.setItem(BILLING_PAYMENTS_STORAGE_VERSION_KEY, BILLING_STORAGE_VERSION);
     } catch (error) {
         console.warn('Failed to save billing sessions state.', error);
     }
@@ -370,6 +425,20 @@ function calculatePaymentBreakdownForRows(rows) {
     };
 }
 
+function calculatePaymentBreakdownForCount(sessionCount) {
+    const count = Number.isFinite(Number(sessionCount)) ? Math.max(0, Number(sessionCount)) : 0;
+    const bundles = Math.floor(count / BUNDLE_SIZE);
+    const remainder = count % BUNDLE_SIZE;
+    const baseTotal = count * SINGLE_SESSION_PRICE;
+    const discountedTotal = bundles * BUNDLE_PRICE + remainder * SINGLE_SESSION_PRICE;
+    return {
+        sessionCount: count,
+        baseTotal,
+        discountedTotal,
+        discount: Math.max(0, baseTotal - discountedTotal)
+    };
+}
+
 function getEarliestUnpaidRows(limit = 10) {
     return billingSessions
         .filter(item => item.status === 'unpaid')
@@ -411,6 +480,47 @@ function normalizeBillingRow(row, index) {
     };
 }
 
+function normalizePaymentRow(row, index) {
+    const purchased = Number.parseInt(String(row.sessions_purchased ?? row.sessionsPurchased ?? '0'), 10);
+    const assigned = Number.parseInt(String(row.sessions_assigned ?? row.sessionsAssigned ?? '0'), 10);
+    const remainingRaw = row.sessions_remaining ?? row.sessionsRemaining;
+    const remainingParsed = Number.parseInt(String(remainingRaw ?? ''), 10);
+    const remaining = Number.isFinite(remainingParsed)
+        ? remainingParsed
+        : Math.max(0, (Number.isFinite(purchased) ? purchased : 0) - (Number.isFinite(assigned) ? assigned : 0));
+    const status = (row.status || '').trim().toLowerCase();
+    return {
+        id: Number.isFinite(Number(row.id)) ? Number(row.id) : null,
+        batchId: (row.batch_id || row.batchId || `batch_${index}`).trim(),
+        sessionsPurchased: Number.isFinite(purchased) ? purchased : 0,
+        sessionsAssigned: Number.isFinite(assigned) ? assigned : 0,
+        sessionsRemaining: Number.isFinite(remaining) ? Math.max(0, remaining) : 0,
+        status: status === 'approved' || status === 'rejected' ? status : 'pending',
+        method: (row.payment_method || row.method || '').trim() || null,
+        amount: Number.isFinite(Number(row.payment_amount ?? row.amount)) ? Number(row.payment_amount ?? row.amount) : 0,
+        accountName: (row.payment_account_name || row.accountName || '').trim() || null,
+        accountNumber: (row.payment_account_number || row.accountNumber || '').trim() || null,
+        proofPath: (row.proof_path || row.proofPath || '').trim() || null,
+        proofUploadedAt: (row.proof_uploaded_at || row.proofUploadedAt || '').trim() || null,
+        approvedAt: (row.approved_at || row.approvedAt || '').trim() || null,
+        createdAt: (row.created_at || row.createdAt || '').trim() || null
+    };
+}
+
+function getApprovedCreditBatches() {
+    return billingPayments
+        .filter(item => item.status === 'approved' && Number(item.sessionsRemaining) > 0)
+        .sort((a, b) => {
+            const at = Date.parse(a.approvedAt || a.createdAt || '') || 0;
+            const bt = Date.parse(b.approvedAt || b.createdAt || '') || 0;
+            return at - bt;
+        });
+}
+
+function getTotalApprovedCreditsRemaining() {
+    return getApprovedCreditBatches().reduce((sum, item) => sum + (Number(item.sessionsRemaining) || 0), 0);
+}
+
 function updateDiscountMeter() {
     const select = document.getElementById('billing-pay-count');
     const fill = document.getElementById('billing-discount-fill');
@@ -419,21 +529,15 @@ function updateDiscountMeter() {
     if (!select || !fill || !meterText) return;
 
     const selectedCount = getSelectedPaymentCount();
-    const previewRows = getEarliestUnpaidRows(selectedCount);
-    const projectedRows = [...previewRows];
-    while (projectedRows.length < selectedCount) {
-        projectedRows.push({ hours: 1 });
-    }
-    const breakdown = calculatePaymentBreakdownForRows(projectedRows);
+    const breakdown = calculatePaymentBreakdownForCount(selectedCount);
+    const activeCredits = getTotalApprovedCreditsRemaining();
     const progressPct = Math.max(0, Math.min(100, (selectedCount / BUNDLE_SIZE) * 100));
     fill.style.width = `${progressPct}%`;
 
     if (selectedCount < BUNDLE_SIZE) {
         const remaining = BUNDLE_SIZE - selectedCount;
-        const availabilityNote = previewRows.length < selectedCount
-            ? ` Only ${previewRows.length} unpaid available now.`
-            : '';
-        meterText.textContent = `Pay now: ${formatPeso(breakdown.discountedTotal)}. +${remaining} to unlock ₱500 discount.${availabilityNote}`;
+        const creditNote = activeCredits > 0 ? ` Active prepaid credits: ${activeCredits}.` : '';
+        meterText.textContent = `Pay now: ${formatPeso(breakdown.discountedTotal)}. +${remaining} to unlock ₱500 discount.${creditNote}`;
         if (bundleChip) {
             bundleChip.classList.add('hidden');
             bundleChip.textContent = '';
@@ -441,7 +545,8 @@ function updateDiscountMeter() {
         return;
     }
 
-    meterText.textContent = `Bundle total: ${formatPeso(breakdown.discountedTotal)}.`;
+    const creditNote = activeCredits > 0 ? ` Active prepaid credits: ${activeCredits}.` : '';
+    meterText.textContent = `Bundle total: ${formatPeso(breakdown.discountedTotal)}.${creditNote}`;
     if (bundleChip) {
         bundleChip.classList.remove('hidden');
         bundleChip.textContent = `Bundle Applied: -${formatPeso(breakdown.discount)}`;
@@ -553,60 +658,123 @@ function formatPendingAge(isoDate) {
     return parsed.toLocaleString();
 }
 
-function groupPendingBatches(rows) {
-    const pending = rows.filter(item => item.status === 'pending' && item.paymentBatchId);
-    const grouped = new Map();
-    pending.forEach(item => {
-        const key = item.paymentBatchId;
-        if (!grouped.has(key)) {
-            grouped.set(key, {
-                batchId: key,
-                sessions: [],
-                method: item.paymentMethod || '',
-                amount: Number.isFinite(Number(item.paymentAmount)) ? Number(item.paymentAmount) : 0,
-                proofPath: item.proofPath || '',
-                submittedAt: item.proofUploadedAt || '',
-                accountName: item.paymentAccountName || '',
-                accountNumber: item.paymentAccountNumber || ''
-            });
-        }
-        grouped.get(key).sessions.push(item);
-    });
-    return [...grouped.values()].sort((a, b) => {
-        const at = Date.parse(a.submittedAt || '') || 0;
-        const bt = Date.parse(b.submittedAt || '') || 0;
-        return bt - at;
-    });
+function getBatchLinkedSessionCount(batchId) {
+    return billingSessions.filter(item => item.paymentBatchId === batchId).length;
 }
 
-function groupApprovedBatches(rows) {
-    const approved = rows.filter(item => item.status === 'paid' && item.paymentBatchId && item.proofPath);
-    const grouped = new Map();
-    approved.forEach(item => {
-        const key = item.paymentBatchId;
-        if (!grouped.has(key)) {
-            grouped.set(key, {
-                batchId: key,
-                sessions: [],
-                method: item.paymentMethod || '',
-                amount: Number.isFinite(Number(item.paymentAmount)) ? Number(item.paymentAmount) : 0,
-                proofPath: item.proofPath || '',
-                submittedAt: item.proofUploadedAt || '',
-                approvedAt: item.approvedAt || '',
-                accountName: item.paymentAccountName || '',
-                accountNumber: item.paymentAccountNumber || ''
+function groupPendingBatches() {
+    if (!billingPayments.length) {
+        const groupedLegacy = new Map();
+        billingSessions
+            .filter(item => item.status === 'pending' && item.paymentBatchId)
+            .forEach(item => {
+                const key = item.paymentBatchId;
+                if (!groupedLegacy.has(key)) {
+                    groupedLegacy.set(key, {
+                        batchId: key,
+                        sessionsPurchased: 0,
+                        sessionsAssigned: 0,
+                        sessionsRemaining: 0,
+                        linkedCount: 0,
+                        method: item.paymentMethod || '',
+                        amount: Number(item.paymentAmount) || 0,
+                        proofPath: item.proofPath || '',
+                        submittedAt: item.proofUploadedAt || '',
+                        accountName: item.paymentAccountName || '',
+                        accountNumber: item.paymentAccountNumber || ''
+                    });
+                }
+                const row = groupedLegacy.get(key);
+                row.sessionsPurchased += 1;
+                row.sessionsAssigned += 1;
+                row.linkedCount += 1;
             });
-        }
-        grouped.get(key).sessions.push(item);
-        if (item.approvedAt && !grouped.get(key).approvedAt) {
-            grouped.get(key).approvedAt = item.approvedAt;
-        }
-    });
-    return [...grouped.values()].sort((a, b) => {
-        const at = Date.parse(a.approvedAt || a.submittedAt || '') || 0;
-        const bt = Date.parse(b.approvedAt || b.submittedAt || '') || 0;
-        return bt - at;
-    });
+        return [...groupedLegacy.values()].sort((a, b) => {
+            const at = Date.parse(a.submittedAt || '') || 0;
+            const bt = Date.parse(b.submittedAt || '') || 0;
+            return bt - at;
+        });
+    }
+    return billingPayments
+        .filter(item => item.status === 'pending' && item.batchId)
+        .map(item => ({
+            batchId: item.batchId,
+            sessionsPurchased: item.sessionsPurchased,
+            sessionsAssigned: item.sessionsAssigned,
+            sessionsRemaining: item.sessionsRemaining,
+            linkedCount: getBatchLinkedSessionCount(item.batchId),
+            method: item.method || '',
+            amount: Number(item.amount) || 0,
+            proofPath: item.proofPath || '',
+            submittedAt: item.proofUploadedAt || item.createdAt || '',
+            accountName: item.accountName || '',
+            accountNumber: item.accountNumber || ''
+        }))
+        .sort((a, b) => {
+            const at = Date.parse(a.submittedAt || '') || 0;
+            const bt = Date.parse(b.submittedAt || '') || 0;
+            return bt - at;
+        });
+}
+
+function groupApprovedBatches() {
+    if (!billingPayments.length) {
+        const groupedLegacy = new Map();
+        billingSessions
+            .filter(item => item.status === 'paid' && item.paymentBatchId && item.proofPath)
+            .forEach(item => {
+                const key = item.paymentBatchId;
+                if (!groupedLegacy.has(key)) {
+                    groupedLegacy.set(key, {
+                        batchId: key,
+                        sessionsPurchased: 0,
+                        sessionsAssigned: 0,
+                        sessionsRemaining: 0,
+                        linkedCount: 0,
+                        method: item.paymentMethod || '',
+                        amount: Number(item.paymentAmount) || 0,
+                        proofPath: item.proofPath || '',
+                        submittedAt: item.proofUploadedAt || '',
+                        approvedAt: item.approvedAt || '',
+                        accountName: item.paymentAccountName || '',
+                        accountNumber: item.paymentAccountNumber || ''
+                    });
+                }
+                const row = groupedLegacy.get(key);
+                row.sessionsPurchased += 1;
+                row.sessionsAssigned += 1;
+                row.linkedCount += 1;
+                if (!row.approvedAt && item.approvedAt) {
+                    row.approvedAt = item.approvedAt;
+                }
+            });
+        return [...groupedLegacy.values()].sort((a, b) => {
+            const at = Date.parse(a.approvedAt || a.submittedAt || '') || 0;
+            const bt = Date.parse(b.approvedAt || b.submittedAt || '') || 0;
+            return bt - at;
+        });
+    }
+    return billingPayments
+        .filter(item => item.status === 'approved' && item.batchId && item.proofPath)
+        .map(item => ({
+            batchId: item.batchId,
+            sessionsPurchased: item.sessionsPurchased,
+            sessionsAssigned: item.sessionsAssigned,
+            sessionsRemaining: item.sessionsRemaining,
+            linkedCount: getBatchLinkedSessionCount(item.batchId),
+            method: item.method || '',
+            amount: Number(item.amount) || 0,
+            proofPath: item.proofPath || '',
+            submittedAt: item.proofUploadedAt || item.createdAt || '',
+            approvedAt: item.approvedAt || '',
+            accountName: item.accountName || '',
+            accountNumber: item.accountNumber || ''
+        }))
+        .sort((a, b) => {
+            const at = Date.parse(a.approvedAt || a.submittedAt || '') || 0;
+            const bt = Date.parse(b.approvedAt || b.submittedAt || '') || 0;
+            return bt - at;
+        });
 }
 
 function getHistoryMonthKey(group) {
@@ -663,30 +831,52 @@ async function cleanupExpiredProofs() {
     const cutoff = new Date(now);
     cutoff.setMonth(cutoff.getMonth() - PROOF_RETENTION_MONTHS);
 
-    const expiredRows = billingSessions.filter(item => {
+    const usePaymentLedger = billingPayments.length > 0;
+    const expiredPayments = (usePaymentLedger ? billingPayments : billingSessions).filter(item => {
         if (!item.proofPath || !item.proofUploadedAt) return false;
         const proofDate = new Date(item.proofUploadedAt);
         return !Number.isNaN(proofDate.getTime()) && proofDate < cutoff;
     });
 
-    if (!expiredRows.length) return;
+    if (!expiredPayments.length) return;
 
-    const paths = [...new Set(expiredRows.map(item => item.proofPath).filter(Boolean))];
-    const ids = expiredRows.map(item => item.id).filter(id => Number.isFinite(Number(id)));
+    const paths = [...new Set(expiredPayments.map(item => item.proofPath).filter(Boolean))];
+    const ids = expiredPayments.map(item => item.id).filter(id => Number.isFinite(Number(id)));
+    const batchIds = expiredPayments.map(item => item.batchId || item.paymentBatchId).filter(Boolean);
 
     if (paths.length) {
         await supabaseClient.storage.from(PROOF_BUCKET).remove(paths);
     }
-    if (ids.length) {
+    if (ids.length && usePaymentLedger) {
+        await supabaseClient
+            .from(BILLING_PAYMENTS_TABLE)
+            .update({ proof_path: null })
+            .in('id', ids);
+        billingPayments = billingPayments.map(item => (
+            ids.includes(item.id) ? { ...item, proofPath: null } : item
+        ));
+    } else if (ids.length) {
         await supabaseClient
             .from(BILLING_TABLE)
             .update({ proof_path: null })
             .in('id', ids);
-        billingSessions = billingSessions.map(item => {
-            if (!ids.includes(item.id)) return item;
-            return { ...item, proofPath: null };
-        });
+        billingSessions = billingSessions.map(item => (
+            ids.includes(item.id) ? { ...item, proofPath: null } : item
+        ));
     }
+    if (batchIds.length) {
+        await supabaseClient
+            .from(BILLING_TABLE)
+            .update({ proof_path: null })
+            .in('payment_batch_id', batchIds);
+        const batchIdSet = new Set(batchIds);
+        billingSessions = billingSessions.map(item => (
+            item.paymentBatchId && batchIdSet.has(item.paymentBatchId)
+                ? { ...item, proofPath: null }
+                : item
+        ));
+    }
+    saveBillingSessions();
 }
 
 function setBillingPasswordError(message = '') {
@@ -771,7 +961,7 @@ function renderPendingPayments() {
     if (!list) return;
     list.innerHTML = '';
 
-    const groups = groupPendingBatches(billingSessions);
+    const groups = groupPendingBatches();
     if (!groups.length) {
         const empty = document.createElement('div');
         empty.className = 'billing-empty';
@@ -786,11 +976,12 @@ function renderPendingPayments() {
         const methodLabel = PAYMENT_METHOD_DETAILS[group.method] ? PAYMENT_METHOD_DETAILS[group.method].label : 'Payment';
         wrapper.innerHTML = `
             <div class="billing-pending-top">
-                <strong>${formatSessionCount(group.sessions.length)} • ${formatPeso(group.amount || 0)}</strong>
+                <strong>${formatSessionCount(group.sessionsPurchased)} • ${formatPeso(group.amount || 0)}</strong>
                 <span class="billing-status pending">PENDING</span>
             </div>
             <div class="billing-pending-meta">
                 <span>${methodLabel} • ${group.accountNumber || ''} • ${group.accountName || ''}</span>
+                <span>Assigned now: ${group.sessionsAssigned} • Future credit: ${group.sessionsRemaining}</span>
                 <span>Submitted: ${formatPendingAge(group.submittedAt)}</span>
             </div>
             <div class="billing-pending-actions"></div>
@@ -820,7 +1011,7 @@ function renderPaymentHistory() {
     if (!list) return;
     list.innerHTML = '';
 
-    const groups = groupApprovedBatches(billingSessions);
+    const groups = groupApprovedBatches();
     syncHistoryFilterOptions(groups);
 
     if (!groups.length) {
@@ -849,11 +1040,12 @@ function renderPaymentHistory() {
         const methodLabel = PAYMENT_METHOD_DETAILS[group.method] ? PAYMENT_METHOD_DETAILS[group.method].label : 'Payment';
         wrapper.innerHTML = `
             <div class="billing-pending-top">
-                <strong>${formatSessionCount(group.sessions.length)} • ${formatPeso(group.amount || 0)}</strong>
+                <strong>${formatSessionCount(group.sessionsPurchased)} • ${formatPeso(group.amount || 0)}</strong>
                 <span class="billing-status paid">PAID</span>
             </div>
             <div class="billing-pending-meta">
                 <span>${methodLabel} • ${group.accountNumber || ''} • ${group.accountName || ''}</span>
+                <span>Applied: ${group.sessionsAssigned} • Credit left: ${group.sessionsRemaining}</span>
                 <span>Submitted: ${formatPendingAge(group.submittedAt)}</span>
                 <span>Approved: ${formatPendingAge(group.approvedAt)}</span>
             </div>
@@ -872,6 +1064,7 @@ function renderPaymentHistory() {
 
 function renderBillingDashboard() {
     const unpaidSessions = billingSessions.filter(item => item.status === 'unpaid');
+    const prepaidCredits = getTotalApprovedCreditsRemaining();
     const clientControls = document.getElementById('billing-client-controls');
     const adminControls = document.getElementById('billing-admin-controls');
     const clientNote = document.getElementById('billing-client-note');
@@ -885,9 +1078,11 @@ function renderBillingDashboard() {
 
     const unpaidCountEl = document.getElementById('billing-unpaid-count');
     const totalLogsEl = document.getElementById('billing-total-logs');
+    const prepaidCreditsEl = document.getElementById('billing-prepaid-credits');
 
     if (unpaidCountEl) unpaidCountEl.textContent = String(unpaidSessions.length);
     if (totalLogsEl) totalLogsEl.textContent = String(billingSessions.length);
+    if (prepaidCreditsEl) prepaidCreditsEl.textContent = String(prepaidCredits);
 
     renderBillingList('billing-unpaid-list', unpaidSessions, 'No unpaid sessions right now.', 'asc');
     renderBillingList('billing-log-list', billingSessions, 'No session logs found.', 'desc');
@@ -895,6 +1090,112 @@ function renderBillingDashboard() {
     renderPaymentHistory();
     renderPaymentMethodDetails();
     updateDiscountMeter();
+}
+
+function syncLocalPayment(row) {
+    const normalized = normalizePaymentRow(row, billingPayments.length);
+    const existingIdx = billingPayments.findIndex(item => item.batchId === normalized.batchId);
+    if (existingIdx >= 0) {
+        billingPayments[existingIdx] = normalized;
+    } else {
+        billingPayments.push(normalized);
+    }
+}
+
+async function applyApprovedCreditsToUnpaidSessions(limit = Number.MAX_SAFE_INTEGER) {
+    let applied = 0;
+    const maxToApply = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : Number.MAX_SAFE_INTEGER;
+    if (maxToApply === 0) {
+        return { applied: 0, error: null };
+    }
+
+    const unpaidRows = getEarliestUnpaidRows(9999);
+    if (!unpaidRows.length) {
+        return { applied: 0, error: null };
+    }
+
+    let paymentQueue = getApprovedCreditBatches();
+    let paymentIndex = 0;
+    for (const sessionRow of unpaidRows) {
+        if (applied >= maxToApply) break;
+        while (paymentIndex < paymentQueue.length && Number(paymentQueue[paymentIndex].sessionsRemaining) <= 0) {
+            paymentIndex += 1;
+        }
+        const payment = paymentQueue[paymentIndex];
+        if (!payment) break;
+
+        const methodDetails = PAYMENT_METHOD_DETAILS[payment.method || ''] || {
+            accountName: payment.accountName || '',
+            accountNumber: payment.accountNumber || ''
+        };
+
+        if (hasSupabaseBilling()) {
+            if (!Number.isFinite(Number(sessionRow.id)) || !Number.isFinite(Number(payment.id))) {
+                return { applied, error: 'Sync issue: missing Supabase row IDs.' };
+            }
+
+            const sessionUpdatePayload = {
+                status: 'paid',
+                payment_batch_id: payment.batchId,
+                payment_method: payment.method,
+                payment_amount: payment.amount,
+                payment_account_name: methodDetails.accountName || payment.accountName || null,
+                payment_account_number: methodDetails.accountNumber || payment.accountNumber || null,
+                proof_path: payment.proofPath || null,
+                proof_uploaded_at: payment.proofUploadedAt || null,
+                approved_at: payment.approvedAt || new Date().toISOString()
+            };
+            const { error: sessionUpdateError } = await supabaseClient
+                .from(BILLING_TABLE)
+                .update(sessionUpdatePayload)
+                .eq('id', sessionRow.id);
+            if (sessionUpdateError) {
+                return { applied, error: sessionUpdateError.message };
+            }
+
+            const nextAssigned = Number(payment.sessionsAssigned) + 1;
+            const nextRemaining = Math.max(0, Number(payment.sessionsRemaining) - 1);
+            const { data: paymentUpdateData, error: paymentUpdateError } = await supabaseClient
+                .from(BILLING_PAYMENTS_TABLE)
+                .update({
+                    sessions_assigned: nextAssigned,
+                    sessions_remaining: nextRemaining
+                })
+                .eq('id', payment.id)
+                .gt('sessions_remaining', 0)
+                .select('id,batch_id,sessions_purchased,sessions_assigned,sessions_remaining,status,payment_method,payment_amount,payment_account_name,payment_account_number,proof_path,proof_uploaded_at,approved_at,created_at')
+                .single();
+            if (paymentUpdateError) {
+                await supabaseClient
+                    .from(BILLING_TABLE)
+                    .update({ status: 'unpaid', payment_batch_id: null, payment_method: null, payment_amount: null, payment_account_name: null, payment_account_number: null, proof_path: null, proof_uploaded_at: null, approved_at: null })
+                    .eq('id', sessionRow.id);
+                return { applied, error: paymentUpdateError.message };
+            }
+            syncLocalPayment(paymentUpdateData);
+        } else {
+            payment.sessionsAssigned = Number(payment.sessionsAssigned) + 1;
+            payment.sessionsRemaining = Math.max(0, Number(payment.sessionsRemaining) - 1);
+            syncLocalPayment(payment);
+        }
+
+        sessionRow.status = 'paid';
+        sessionRow.paymentBatchId = payment.batchId;
+        sessionRow.paymentMethod = payment.method;
+        sessionRow.paymentAmount = payment.amount;
+        sessionRow.paymentAccountName = methodDetails.accountName || payment.accountName || null;
+        sessionRow.paymentAccountNumber = methodDetails.accountNumber || payment.accountNumber || null;
+        sessionRow.proofPath = payment.proofPath || null;
+        sessionRow.proofUploadedAt = payment.proofUploadedAt || null;
+        sessionRow.approvedAt = payment.approvedAt || new Date().toISOString();
+        applied += 1;
+        paymentQueue = getApprovedCreditBatches();
+    }
+
+    if (applied > 0) {
+        saveBillingSessions();
+    }
+    return { applied, error: null };
 }
 
 async function submitPaymentProof() {
@@ -908,13 +1209,6 @@ async function submitPaymentProof() {
         return;
     }
 
-    const unpaidSorted = getEarliestUnpaidRows(9999);
-
-    if (unpaidSorted.length < requested) {
-        setBillingPaymentStatus(`Only ${unpaidSorted.length} unpaid session(s) available.`, true);
-        return;
-    }
-
     const proofInput = document.getElementById('billing-proof-file');
     const proofFile = proofInput && proofInput.files ? proofInput.files[0] : null;
     const proofValidation = validateProofFile(proofFile);
@@ -923,25 +1217,50 @@ async function submitPaymentProof() {
         return;
     }
 
-    const methodKey = getSelectedPaymentMethod();
-    const methodDetails = PAYMENT_METHOD_DETAILS[methodKey];
-    const payNow = unpaidSorted.slice(0, requested);
-    const ids = payNow.map(item => item.id).filter(id => Number.isFinite(Number(id)));
-    if (ids.length !== payNow.length) {
+    const unpaidSorted = getEarliestUnpaidRows(9999);
+    const toAssignNow = unpaidSorted.slice(0, requested);
+    const ids = toAssignNow.map(item => item.id).filter(id => Number.isFinite(Number(id)));
+    if (ids.length !== toAssignNow.length) {
         setBillingPaymentStatus('Sync issue: refresh first, then retry.', true);
         return;
     }
 
-    const breakdown = calculatePaymentBreakdownForRows(payNow);
+    const methodKey = getSelectedPaymentMethod();
+    const methodDetails = PAYMENT_METHOD_DETAILS[methodKey];
+    const breakdown = calculatePaymentBreakdownForCount(requested);
     const batchId = createPaymentBatchId();
     const uploadedAt = new Date().toISOString();
+    const assignedNowCount = toAssignNow.length;
+    const futureCreditCount = Math.max(0, requested - assignedNowCount);
 
     let proofPath = '';
     try {
         proofPath = await uploadProofFile(proofFile, batchId);
-        const { error } = await supabaseClient
-            .from(BILLING_TABLE)
-            .update({
+        const paymentInsertPayload = {
+            batch_id: batchId,
+            sessions_purchased: requested,
+            sessions_assigned: assignedNowCount,
+            sessions_remaining: futureCreditCount,
+            status: 'pending',
+            payment_method: methodKey,
+            payment_amount: breakdown.discountedTotal,
+            payment_account_name: methodDetails.accountName,
+            payment_account_number: methodDetails.accountNumber,
+            proof_path: proofPath,
+            proof_uploaded_at: uploadedAt,
+            approved_at: null
+        };
+
+        const { data: paymentData, error: paymentInsertError } = await supabaseClient
+            .from(BILLING_PAYMENTS_TABLE)
+            .insert(paymentInsertPayload)
+            .select('id,batch_id,sessions_purchased,sessions_assigned,sessions_remaining,status,payment_method,payment_amount,payment_account_name,payment_account_number,proof_path,proof_uploaded_at,approved_at,created_at')
+            .single();
+        if (paymentInsertError) throw paymentInsertError;
+        syncLocalPayment(paymentData || paymentInsertPayload);
+
+        if (ids.length > 0) {
+            const sessionUpdatePayload = {
                 status: 'pending',
                 payment_batch_id: batchId,
                 payment_method: methodKey,
@@ -951,18 +1270,29 @@ async function submitPaymentProof() {
                 proof_path: proofPath,
                 proof_uploaded_at: uploadedAt,
                 approved_at: null
-            })
-            .in('id', ids);
-        if (error) throw error;
+            };
+            const { error: sessionUpdateError } = await supabaseClient
+                .from(BILLING_TABLE)
+                .update(sessionUpdatePayload)
+                .in('id', ids);
+            if (sessionUpdateError) {
+                await supabaseClient.from(BILLING_PAYMENTS_TABLE).delete().eq('batch_id', batchId);
+                throw sessionUpdateError;
+            }
+        }
     } catch (error) {
+        billingPayments = billingPayments.filter(item => item.batchId !== batchId);
         if (proofPath) {
             await supabaseClient.storage.from(PROOF_BUCKET).remove([proofPath]);
         }
-        setBillingPaymentStatus(`Proof submission failed: ${error.message}`, true);
+        const schemaHint = error && error.code === '42P01'
+            ? ' Run the updated supabase-schema.sql first.'
+            : '';
+        setBillingPaymentStatus(`Proof submission failed: ${error.message}.${schemaHint}`, true);
         return;
     }
 
-    payNow.forEach(item => {
+    toAssignNow.forEach(item => {
         item.status = 'pending';
         item.paymentBatchId = batchId;
         item.paymentMethod = methodKey;
@@ -979,7 +1309,13 @@ async function submitPaymentProof() {
     saveBillingSessions();
     closeBillingPayModal();
     renderBillingDashboard();
-    setBillingPaymentStatus(`Proof submitted for ${formatSessionCount(requested)} (${formatPeso(breakdown.discountedTotal)}). Status is now PENDING.`, false);
+    const assignmentText = assignedNowCount > 0
+        ? `${formatSessionCount(assignedNowCount)} queued now`
+        : 'No current unpaid logs queued';
+    const futureText = futureCreditCount > 0
+        ? ` ${formatSessionCount(futureCreditCount)} saved as future credit after approval.`
+        : '';
+    setBillingPaymentStatus(`Proof submitted for ${formatSessionCount(requested)} (${formatPeso(breakdown.discountedTotal)}). ${assignmentText}.${futureText}`, false);
     const pendingCard = document.getElementById('billing-pending-card');
     if (pendingCard) {
         pendingCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -993,45 +1329,82 @@ async function approvePendingBatch(batchId) {
         setBillingPaymentStatus('Tutor access is required to approve pending payments.', true);
         return;
     }
+    const pendingPayment = billingPayments.find(item => item.batchId === batchId && item.status === 'pending');
     const pendingRows = billingSessions.filter(item => item.status === 'pending' && item.paymentBatchId === batchId);
-    if (!pendingRows.length) {
-        setBillingPaymentStatus('No pending rows found for this batch.', true);
+    if (!pendingRows.length && !pendingPayment) {
+        setBillingPaymentStatus('No pending payment batch found.', true);
         return;
     }
     const ids = pendingRows.map(item => item.id).filter(id => Number.isFinite(Number(id)));
     const approvedAt = new Date().toISOString();
 
     if (hasSupabaseBilling()) {
-        const { error } = await supabaseClient
-            .from(BILLING_TABLE)
-            .update({
-                status: 'paid',
-                approved_at: approvedAt
-            })
-            .in('id', ids);
-        if (error) {
-            setBillingPaymentStatus(`Approval failed: ${error.message}`, true);
+        if (ids.length > 0) {
+            const { error } = await supabaseClient
+                .from(BILLING_TABLE)
+                .update({
+                    status: 'paid',
+                    approved_at: approvedAt
+                })
+                .in('id', ids);
+            if (error) {
+                setBillingPaymentStatus(`Approval failed: ${error.message}`, true);
+                return;
+            }
+        }
+
+        const { data: paymentData, error: paymentError } = await supabaseClient
+            .from(BILLING_PAYMENTS_TABLE)
+            .update({ status: 'approved', approved_at: approvedAt })
+            .eq('batch_id', batchId)
+            .select('id,batch_id,sessions_purchased,sessions_assigned,sessions_remaining,status,payment_method,payment_amount,payment_account_name,payment_account_number,proof_path,proof_uploaded_at,approved_at,created_at')
+            .single();
+        if (paymentError) {
+            setBillingPaymentStatus(`Approval failed: ${paymentError.message}`, true);
             return;
         }
+        syncLocalPayment(paymentData);
     }
 
     pendingRows.forEach(item => {
         item.status = 'paid';
         item.approvedAt = approvedAt;
     });
+
+    const paymentIdx = billingPayments.findIndex(item => item.batchId === batchId);
+    if (paymentIdx >= 0) {
+        billingPayments[paymentIdx].status = 'approved';
+        billingPayments[paymentIdx].approvedAt = approvedAt;
+    }
+
+    const autoApplyResult = await applyApprovedCreditsToUnpaidSessions(Number.MAX_SAFE_INTEGER);
+    if (autoApplyResult.error) {
+        setBillingPaymentStatus(`Approved batch, but auto-credit apply failed: ${autoApplyResult.error}`, true);
+        renderBillingDashboard();
+        return;
+    }
+
     saveBillingSessions();
     renderBillingDashboard();
-    setBillingPaymentStatus(`Approved ${formatSessionCount(pendingRows.length)} from pending batch.`, false);
+    const updatedBatch = billingPayments.find(item => item.batchId === batchId);
+    const remainingCredit = updatedBatch ? Number(updatedBatch.sessionsRemaining) || 0 : 0;
+    const purchasedCount = updatedBatch
+        ? Number(updatedBatch.sessionsPurchased) || pendingRows.length
+        : (pendingPayment ? Number(pendingPayment.sessionsPurchased) || pendingRows.length : pendingRows.length);
+    const autoAppliedText = autoApplyResult.applied > 0 ? ` Auto-applied ${formatSessionCount(autoApplyResult.applied)} via prepaid credits.` : '';
+    setBillingPaymentStatus(`Approved ${formatSessionCount(purchasedCount)} from pending batch. Credit left in this batch: ${remainingCredit}.${autoAppliedText}`, false);
 }
 
 async function openPaymentProof(batchId) {
-    const row = billingSessions.find(item => item.paymentBatchId === batchId && item.proofPath);
-    if (!row || !row.proofPath) {
+    const payment = billingPayments.find(item => item.batchId === batchId && item.proofPath);
+    const fallbackRow = billingSessions.find(item => item.paymentBatchId === batchId && item.proofPath);
+    const proofPath = payment ? payment.proofPath : (fallbackRow ? fallbackRow.proofPath : '');
+    if (!proofPath) {
         setBillingPaymentStatus('No proof file found for this payment batch.', true);
         return;
     }
 
-    const proofUrl = await getSignedProofUrl(row.proofPath);
+    const proofUrl = await getSignedProofUrl(proofPath);
     if (!proofUrl) {
         setBillingPaymentStatus('Could not open proof image.', true);
         return;
@@ -1042,8 +1415,11 @@ async function openPaymentProof(batchId) {
     const meta = document.getElementById('billing-proof-meta');
     if (!modal || !image || !meta) return;
 
+    const methodKey = payment ? payment.method : (fallbackRow ? fallbackRow.paymentMethod : '');
+    const amount = payment ? payment.amount : (fallbackRow ? fallbackRow.paymentAmount : 0);
+    const submittedAt = payment ? payment.proofUploadedAt : (fallbackRow ? fallbackRow.proofUploadedAt : '');
     image.src = proofUrl;
-    meta.textContent = `${PAYMENT_METHOD_DETAILS[row.paymentMethod] ? PAYMENT_METHOD_DETAILS[row.paymentMethod].label : 'Payment'} • ${formatPeso(row.paymentAmount || 0)} • ${formatPendingAge(row.proofUploadedAt)}`;
+    meta.textContent = `${PAYMENT_METHOD_DETAILS[methodKey] ? PAYMENT_METHOD_DETAILS[methodKey].label : 'Payment'} • ${formatPeso(Number(amount) || 0)} • ${formatPendingAge(submittedAt)}`;
 
     modal.classList.remove('hidden');
     setTimeout(() => modal.classList.add('active'), 10);
@@ -1242,7 +1618,7 @@ async function submitBillingAddSession() {
     const tutee = (tuteeInput.value || '').trim();
     const topic = (topicInput.value || '').trim();
     const hours = Number.parseFloat(hoursInput.value || '1');
-    const status = statusInput.value === 'paid' ? 'paid' : 'unpaid';
+    const requestedStatus = statusInput.value === 'paid' ? 'paid' : 'unpaid';
 
     if (!date || !time || !tutee) {
         setBillingAddError('Fill date, time, and tutee.');
@@ -1262,7 +1638,7 @@ async function submitBillingAddSession() {
         topic,
         hours,
         sessions: 1,
-        status,
+        status: requestedStatus,
         sort_order: nextOrder
     };
 
@@ -1276,7 +1652,7 @@ async function submitBillingAddSession() {
                 topic,
                 hours,
                 sessions: 1,
-                status,
+                status: requestedStatus,
                 sort_order: nextOrder
             })
             .select('id,date,time,tutee,sessions,hours,topic,status,sort_order,payment_batch_id,payment_method,payment_amount,payment_account_name,payment_account_number,proof_path,proof_uploaded_at,approved_at')
@@ -1289,11 +1665,22 @@ async function submitBillingAddSession() {
     }
 
     billingSessions.push(normalizeBillingRow(createdRow, nextOrder));
+    let creditApplyText = '';
+    if (requestedStatus === 'unpaid') {
+        const creditApplyResult = await applyApprovedCreditsToUnpaidSessions(1);
+        if (creditApplyResult.error) {
+            setBillingAddError(`Session added, but prepaid credit apply failed: ${creditApplyResult.error}`);
+            return;
+        }
+        if (creditApplyResult.applied > 0) {
+            creditApplyText = ' Prepaid credit auto-applied.';
+        }
+    }
     saveBillingSessions();
     closeBillingAddSessionModal();
     renderBillingDashboard();
     const modeText = billingPersistenceMode === 'supabase' ? 'Synced to Supabase.' : 'Saved locally.';
-    setBillingPaymentStatus(`Added ${formatHours(hours)} for ${tutee} on ${date} ${time}.${topic ? ` Topic: ${topic}.` : ''} ${modeText}`);
+    setBillingPaymentStatus(`Added ${formatHours(hours)} for ${tutee} on ${date} ${time}.${topic ? ` Topic: ${topic}.` : ''}${creditApplyText} ${modeText}`);
 }
 
 function renderMath() {
